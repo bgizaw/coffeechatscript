@@ -60,7 +60,8 @@
           <p class="error" id="search-error" hidden></p>
         </form>
         <ol class="how">
-          <li>We search Apollo for hiring managers, recruiters, and people in this role.</li>
+          <li>We search the web for hiring managers, recruiters, and people in this role.</li>
+          <li>We find a real, publicly posted email at the company to learn its address format, then predict each person's email.</li>
           <li>AI ranks them and drafts a note from your template, personalized to each person.</li>
           <li>You review and edit. Nothing sends until you press Send.</li>
           <li>Each sent email is logged to your Google Sheet.</li>
@@ -89,6 +90,22 @@
             <tr><th>Sent</th><th>Name</th><th>Their role</th><th>Company</th><th>Email</th><th>For role</th><th>Status</th></tr>
           </thead>
           <tbody id="log-body"><tr><td colspan="7" class="muted">Nothing yet.</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="log">
+      <div class="log-head">
+        <h2>Email patterns</h2>
+        <button class="btn btn-ghost" id="refresh-patterns" type="button">Refresh</button>
+      </div>
+      <p class="hint">Learned from addresses posted publicly online. Forget a pattern to look it up again on the next search.</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Domain</th><th>Format</th><th>Examples found</th><th>Checked</th><th></th></tr>
+          </thead>
+          <tbody id="patterns-body"><tr><td colspan="5" class="muted">Nothing yet.</td></tr></tbody>
         </table>
       </div>
     </section>
@@ -149,6 +166,7 @@
       </header>
       <p class="reason"></p>
       <label class="line"><span>To</span><input class="to-email" /></label>
+      <p class="pattern-note"></p>
       <label class="line"><span>Subject</span><input class="subject" /></label>
       <div class="body-wrap">
         <textarea class="body" rows="10"></textarea>

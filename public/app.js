@@ -127,6 +127,9 @@ function renderDraft(contact, index) {
   $(".rank", node).textContent = `Pick #${index + 1}`;
   $(".reason", node).textContent = contact.reason || "";
   $(".to-email", node).value = contact.email || "";
+  const note = $(".pattern-note", node);
+  note.textContent = contact.emailPattern ? `Predicted email · pattern ${contact.emailPattern}` : "";
+  note.hidden = !contact.emailPattern;
   $(".subject", node).value = contact.subject || "";
   $(".body", node).value = contact.body || "";
   if (contact.linkedinUrl) {
@@ -213,17 +216,21 @@ $("#search-form").addEventListener("submit", async (e) => {
     toast("Tip: add your name, background, and template in Settings for better drafts");
   }
   btn.disabled = true;
-  btn.textContent = "Searching Apollo & ranking contacts…";
+  btn.textContent = "Searching the web & ranking contacts…";
   const list = $("#drafts-list");
-  list.innerHTML = `<div class="empty"><div class="envelope" aria-hidden="true"></div><p>Finding the best people at ${escapeHtml(f.company.value)}… this takes ~20 seconds.</p></div>`;
+  const setStatus = (text) =>
+    (list.innerHTML = `<div class="empty"><div class="envelope" aria-hidden="true"></div><p>${escapeHtml(text)}</p><p class="hint">Web research usually takes 1–3 minutes.</p></div>`);
+  setStatus(`Finding the best people at ${f.company.value}…`);
   try {
-    const { contacts } = await api("/api/search", {
+    const { search } = await api("/api/search", {
       method: "POST",
       body: { role: f.role.value, company: f.company.value, domain: f.domain.value },
     });
+    const contacts = await waitForSearch(search.id, setStatus);
     list.innerHTML = "";
     const drafts = contacts.map((c, i) => renderDraft(c, i));
     drafts.forEach((d) => list.appendChild(d.node));
+    loadPatterns();
     await Promise.all(drafts.map((d) => d.generate()));
     loadLog();
   } catch (err) {
@@ -234,6 +241,18 @@ $("#search-form").addEventListener("submit", async (e) => {
     btn.textContent = "Find the top 2 people";
   }
 });
+
+async function waitForSearch(id, onProgress) {
+  const deadline = Date.now() + 10 * 60 * 1000;
+  while (Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 3000));
+    const { search, contacts } = await api(`/api/search/${id}`);
+    if (search.status === "done") return contacts;
+    if (search.status === "failed") throw new Error(search.error || "Search failed.");
+    if (search.progress) onProgress(search.progress);
+  }
+  throw new Error("The search is taking too long. Try again in a minute.");
+}
 
 /* ---------- Log ---------- */
 function escapeHtml(s) {
@@ -265,6 +284,39 @@ async function loadLog() {
 }
 $("#refresh-log").addEventListener("click", loadLog);
 
+/* ---------- Email patterns ---------- */
+async function loadPatterns() {
+  try {
+    const rows = await api("/api/patterns");
+    const body = $("#patterns-body");
+    if (!rows.length) {
+      body.innerHTML = `<tr><td colspan="5" class="muted">Nothing yet. Each company's email format is saved here after a search.</td></tr>`;
+      return;
+    }
+    body.innerHTML = rows
+      .map((r) => {
+        const examples = (r.examples || [])
+          .map((e) => (e.sourceUrl ? `<a class="link" href="${escapeHtml(e.sourceUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(e.email)}</a>` : escapeHtml(e.email)))
+          .join("<br />");
+        return `<tr>
+          <td class="mono">${escapeHtml(r.domain)}</td>
+          <td class="mono">${r.pattern ? `${escapeHtml(r.pattern)}<br /><span class="muted">${escapeHtml(r.example)}</span>` : `<span class="muted">not found</span>`}</td>
+          <td class="mono">${examples || `<span class="muted">none</span>`}</td>
+          <td class="mono">${r.checkedAt ? new Date(r.checkedAt).toLocaleDateString([], { dateStyle: "medium" }) : "—"}</td>
+          <td><button class="btn btn-ghost forget" type="button" data-domain="${escapeHtml(r.domain)}">Forget</button></td>
+        </tr>`;
+      })
+      .join("");
+  } catch {}
+}
+$("#refresh-patterns").addEventListener("click", loadPatterns);
+$("#patterns-body").addEventListener("click", async (e) => {
+  const btn = e.target.closest(".forget");
+  if (!btn) return;
+  await api(`/api/patterns/${encodeURIComponent(btn.dataset.domain)}`, { method: "DELETE" }).catch(() => {});
+  loadPatterns();
+});
+
 async function refreshSettingsQuietly() {
   try {
     settings = await api("/api/settings");
@@ -283,6 +335,7 @@ async function boot() {
   settings = await api("/api/settings");
   renderSettings();
   loadLog();
+  loadPatterns();
 
   const params = new URLSearchParams(location.search);
   if (params.get("google") === "connected") toast("Google account connected");

@@ -20,6 +20,10 @@ export const searches = pgTable("searches", {
   role: text().notNull(),
   company: text().notNull(),
   companyDomain: text("company_domain"),
+  // pending | done | failed — searches run in a background function.
+  status: text().notNull().default("done"),
+  progress: text(),
+  error: text(),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -34,9 +38,10 @@ export const outreach = pgTable("outreach", {
   email: text(),
   linkedinUrl: text("linkedin_url"),
   reason: text(),
-  // Snapshot of the Apollo profile used to personalize the AI draft.
+  // Snapshot of what we found about the person, used to personalize the AI draft.
   profile: jsonb(),
-  apolloId: text("apollo_id"),
+  // How the email was predicted, e.g. "first.last" (null when entered by hand).
+  emailPattern: text("email_pattern"),
   subject: text().notNull().default(""),
   body: text().notNull().default(""),
   // draft | sent | failed
@@ -46,4 +51,17 @@ export const outreach = pgTable("outreach", {
   sheetLogged: integer("sheet_logged").notNull().default(0),
   sentAt: timestamp("sent_at"),
   createdAt: timestamp("created_at").defaultNow(),
+});
+
+// One row per company email domain: the address format we learned from public examples.
+export const emailPatterns = pgTable("email_patterns", {
+  domain: text().primaryKey(),
+  company: text(),
+  // e.g. "first.last" — null when no usable public examples were found.
+  pattern: text(),
+  // Number of found examples that match the pattern.
+  matches: integer().notNull().default(0),
+  // [{ email, name, sourceUrl }]
+  examples: jsonb().notNull().default([]),
+  checkedAt: timestamp("checked_at").defaultNow(),
 });
