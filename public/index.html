@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AutoCoffeeChat — reach the people behind the job post</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,800&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="grain" aria-hidden="true"></div>
+
+  <!-- Sign-in -->
+  <main id="login" class="login" hidden>
+    <form id="login-form" class="login-card">
+      <p class="eyebrow">AutoCoffeeChat</p>
+      <h1>Your outreach desk is locked.</h1>
+      <label class="field">
+        <span>Password</span>
+        <input type="password" name="password" autocomplete="current-password" required />
+      </label>
+      <p class="error" id="login-error" hidden></p>
+      <button class="btn btn-ink" type="submit">Unlock</button>
+      <p class="hint" id="login-hint"></p>
+    </form>
+  </main>
+
+  <!-- App -->
+  <div id="app" hidden>
+    <header class="topbar">
+      <a class="brand" href="/"><span class="stamp">AC</span> AutoCoffeeChat</a>
+      <nav class="top-actions">
+        <span class="status-pill" id="google-pill">Google not connected</span>
+        <a class="link" id="sheet-link" href="#" target="_blank" rel="noopener" hidden>Open log sheet</a>
+        <button class="btn btn-ghost" id="open-settings" type="button">Settings</button>
+        <button class="btn btn-ghost" id="logout" type="button">Lock</button>
+      </nav>
+    </header>
+
+    <main class="desk">
+      <section class="compose">
+        <p class="eyebrow">Step 1 — the job</p>
+        <h1 class="headline">Who should hear<br />about <em>your application?</em></h1>
+        <form id="search-form" class="search-form">
+          <label class="field big">
+            <span>Role you applied for</span>
+            <input name="role" placeholder="Senior Product Designer" required autocomplete="off" />
+          </label>
+          <label class="field big">
+            <span>Company</span>
+            <input name="company" placeholder="Figma" required autocomplete="off" />
+          </label>
+          <label class="field">
+            <span>Company website <small>(optional — helps when the name is ambiguous)</small></span>
+            <input name="domain" placeholder="figma.com" autocomplete="off" />
+          </label>
+          <button class="btn btn-ink btn-lg" id="search-btn" type="submit">Find the top 2 people</button>
+          <p class="error" id="search-error" hidden></p>
+        </form>
+        <ol class="how">
+          <li>We search Apollo for hiring managers, recruiters, and people in this role.</li>
+          <li>AI ranks them and drafts a note from your template, personalized to each person.</li>
+          <li>You review and edit. Nothing sends until you press Send.</li>
+          <li>Each sent email is logged to your Google Sheet.</li>
+        </ol>
+      </section>
+
+      <section class="drafts">
+        <p class="eyebrow">Step 2 — review &amp; send</p>
+        <div id="drafts-list" class="drafts-list">
+          <div class="empty">
+            <div class="envelope" aria-hidden="true"></div>
+            <p>Drafts land here. Enter a role and company to start.</p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <section class="log">
+      <div class="log-head">
+        <h2>Outreach log</h2>
+        <button class="btn btn-ghost" id="refresh-log" type="button">Refresh</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Sent</th><th>Name</th><th>Their role</th><th>Company</th><th>Email</th><th>For role</th><th>Status</th></tr>
+          </thead>
+          <tbody id="log-body"><tr><td colspan="7" class="muted">Nothing yet.</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <!-- Settings drawer -->
+  <div class="scrim" id="scrim" hidden></div>
+  <aside class="drawer" id="settings" aria-hidden="true">
+    <div class="drawer-head">
+      <h2>Settings</h2>
+      <button class="btn btn-ghost" id="close-settings" type="button">Close</button>
+    </div>
+    <form id="settings-form" class="settings-form">
+      <fieldset>
+        <legend>Google account</legend>
+        <p class="muted" id="google-status">Not connected.</p>
+        <div class="row">
+          <a class="btn btn-ink" id="google-connect" href="/api/auth/google/start">Connect Gmail &amp; Sheets</a>
+          <button class="btn btn-ghost" id="google-disconnect" type="button" hidden>Disconnect</button>
+        </div>
+        <p class="hint">Emails are sent from this Gmail address. A log spreadsheet is created automatically on your first send.</p>
+      </fieldset>
+      <fieldset>
+        <legend>About you</legend>
+        <label class="field"><span>Your name</span><input name="senderName" placeholder="Priya Raman" /></label>
+        <label class="field"><span>Background the AI can draw on</span>
+          <textarea name="senderBackground" rows="5" placeholder="3 years as a product designer at a fintech startup; led the redesign of onboarding that lifted activation 18%; CS grad from UIUC..."></textarea>
+        </label>
+      </fieldset>
+      <fieldset>
+        <legend>Email template</legend>
+        <label class="field"><span>The AI follows this loosely, then personalizes it</span>
+          <textarea name="emailTemplate" rows="10" placeholder="Hi {{first_name}},&#10;&#10;I just applied for the {{role}} role at {{company}}..."></textarea>
+        </label>
+        <p class="hint">Placeholders like <code>{{first_name}}</code>, <code>{{role}}</code>, <code>{{company}}</code>, <code>{{my_name}}</code> are understood but optional.</p>
+      </fieldset>
+      <fieldset>
+        <legend>Google Sheet</legend>
+        <label class="field"><span>Existing sheet URL or ID <small>(leave blank to auto-create)</small></span>
+          <input name="spreadsheetId" placeholder="https://docs.google.com/spreadsheets/d/..." />
+        </label>
+      </fieldset>
+      <p class="error" id="settings-error" hidden></p>
+      <button class="btn btn-ink" type="submit">Save settings</button>
+    </form>
+  </aside>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <template id="draft-template">
+    <article class="letter">
+      <header class="letter-head">
+        <div>
+          <p class="to-name"></p>
+          <p class="to-title"></p>
+        </div>
+        <span class="rank"></span>
+      </header>
+      <p class="reason"></p>
+      <label class="line"><span>To</span><input class="to-email" /></label>
+      <label class="line"><span>Subject</span><input class="subject" /></label>
+      <div class="body-wrap">
+        <textarea class="body" rows="10"></textarea>
+        <div class="skeleton" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+      </div>
+      <p class="error letter-error" hidden></p>
+      <footer class="letter-actions">
+        <a class="link linkedin" target="_blank" rel="noopener" hidden>LinkedIn</a>
+        <span class="spacer"></span>
+        <button class="btn btn-ghost discard" type="button">Discard</button>
+        <button class="btn btn-ghost regen" type="button">Rewrite</button>
+        <button class="btn btn-ink send" type="button">Send</button>
+      </footer>
+    </article>
+  </template>
+
+  <script src="/app.js" type="module"></script>
+</body>
+</html>
