@@ -145,6 +145,7 @@ textarea { resize: vertical; line-height: 1.55; }
   border: 1.5px solid var(--accent); padding: .35rem .55rem; transform: rotate(4deg); white-space: nowrap;
 }
 .reason { font-size: .86rem; color: var(--muted); font-style: italic; margin: 0 0 1rem; }
+.pattern-note { font: .72rem var(--mono); color: var(--muted); margin: 0 0 .5rem 72px; }
 .line { display: grid; grid-template-columns: 72px 1fr; align-items: center; border-top: 1px solid var(--rule); }
 .line span { font: 500 .72rem var(--mono); text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
 .line input { border: none; background: transparent; padding: .6rem 0; border-radius: 0; }
