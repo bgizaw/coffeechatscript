@@ -1,10 +1,11 @@
 const $ = (sel, root = document) => root.querySelector(sel);
 
 async function api(path, opts = {}) {
+  const isForm = opts.body instanceof FormData;
   const res = await fetch(path, {
     ...opts,
-    headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
-    body: opts.body && typeof opts.body !== "string" ? JSON.stringify(opts.body) : opts.body,
+    headers: { ...(isForm ? {} : { "Content-Type": "application/json" }), ...(opts.headers || {}) },
+    body: opts.body && !isForm && typeof opts.body !== "string" ? JSON.stringify(opts.body) : opts.body,
   });
   const data = await res.json().catch(() => ({}));
   if (res.status === 401 && !path.startsWith("/api/auth")) showLogin();
@@ -27,27 +28,35 @@ function showError(el, msg) {
 }
 
 /* ---------- Auth ---------- */
-function showLogin(hint) {
+function showLogin(error) {
+  closeSettings();
   $("#app").hidden = true;
   $("#login").hidden = false;
-  if (hint) $("#login-hint").textContent = hint;
+  showError($("#login-error"), error);
 }
 
-$("#login-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  showError($("#login-error"));
-  try {
-    await api("/api/auth/login", { method: "POST", body: { password: e.target.password.value } });
-    e.target.reset();
-    boot();
-  } catch (err) {
-    showError($("#login-error"), err.message);
-  }
-});
-
-$("#logout").addEventListener("click", async () => {
+async function signOut() {
   await api("/api/auth/logout", { method: "POST" }).catch(() => {});
+  settings = null;
+  resumes = [];
+  resetDrafts();
   showLogin();
+}
+$("#logout").addEventListener("click", signOut);
+$("#logout-2").addEventListener("click", signOut);
+
+$("#delete-account").addEventListener("click", async () => {
+  if (!confirm("Permanently delete your AutoCoffeeChat account, resumes, drafts, and history? This can't be undone.")) return;
+  try {
+    await api("/api/auth/account", { method: "DELETE" });
+    settings = null;
+    resumes = [];
+    resetDrafts();
+    showLogin();
+    toast("Your account was deleted");
+  } catch (err) {
+    toast(err.message);
+  }
 });
 
 /* ---------- Settings ---------- */
@@ -61,12 +70,17 @@ function renderSettings() {
   f.spreadsheetId.value = settings.spreadsheetId || "";
 
   const connected = settings.googleConnected;
-  $("#google-status").textContent = connected ? `Connected as ${settings.googleEmail}` : "Not connected.";
-  $("#google-connect").textContent = connected ? "Reconnect" : "Connect Gmail & Sheets";
-  $("#google-disconnect").hidden = !connected;
+  $("#account-name").textContent = settings.name || settings.senderName || settings.email;
+  $("#account-email").textContent = settings.email;
+  const avatar = $("#account-avatar");
+  avatar.hidden = !settings.picture;
+  if (settings.picture) avatar.src = settings.picture;
+  $("#google-warning").hidden = connected;
+  $("#switch-account").textContent = connected ? "Use a different Google account" : "Reconnect Google";
+  $("#switch-account").href = connected ? "/api/auth/google/start" : `/api/auth/google/start?consent=1&hint=${encodeURIComponent(settings.email)}`;
 
   const pill = $("#google-pill");
-  pill.textContent = connected ? settings.googleEmail : "Google not connected";
+  pill.textContent = connected ? settings.email : `${settings.email} · reconnect needed`;
   pill.classList.toggle("on", connected);
 
   const sheet = $("#sheet-link");
@@ -110,11 +124,128 @@ $("#settings-form").addEventListener("submit", async (e) => {
   }
 });
 
-$("#google-disconnect").addEventListener("click", async () => {
-  await api("/api/auth/google/disconnect", { method: "POST" });
-  settings = await api("/api/settings");
-  renderSettings();
+/* ---------- Resumes ---------- */
+let resumes = [];
+
+function formatSize(bytes) {
+  return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+function renderResumes() {
+  const list = $("#resume-list");
+  list.innerHTML = resumes
+    .map((r) => {
+      const isDefault = settings?.defaultResumeId === r.id;
+      const ext = (r.filename.split(".").pop() || "").toUpperCase();
+      return `<li class="resume${isDefault ? " default" : ""}" data-id="${r.id}">
+        <span class="resume-icon" aria-hidden="true">${escapeHtml(ext)}</span>
+        <div class="resume-meta">
+          <p class="resume-label">${escapeHtml(r.label)}</p>
+          <p class="resume-file"><a href="/api/resumes/${r.id}" target="_blank" rel="noopener">${escapeHtml(r.filename)}</a> · ${formatSize(r.size)}</p>
+        </div>
+        <div class="resume-actions">
+          <button class="icon-btn star" type="button" data-act="default" aria-pressed="${isDefault}" title="${isDefault ? "Attached by default — click to stop" : "Attach by default on new drafts"}">${isDefault ? "★" : "☆"}</button>
+          <button class="icon-btn" type="button" data-act="rename">Rename</button>
+          <button class="icon-btn" type="button" data-act="delete">Delete</button>
+        </div>
+      </li>`;
+    })
+    .join("");
+  // Keep every draft's picker in sync with the current list.
+  document.querySelectorAll("#drafts-list .letter").forEach((node) => fillResumeSelect(node, $(".resume-select", node).value));
+}
+
+async function loadResumes() {
+  try {
+    resumes = await api("/api/resumes");
+    renderResumes();
+  } catch {}
+}
+
+$("#resume-list").addEventListener("click", async (e) => {
+  const btn = e.target.closest("button[data-act]");
+  if (!btn) return;
+  const id = Number(btn.closest(".resume").dataset.id);
+  const resume = resumes.find((r) => r.id === id);
+  showError($("#resume-error"));
+  try {
+    if (btn.dataset.act === "default") {
+      const next = settings.defaultResumeId === id ? null : id;
+      settings = await api("/api/settings", { method: "PUT", body: { defaultResumeId: next } });
+      renderResumes();
+      toast(next ? `"${resume.label}" will be attached to new drafts` : "New drafts won't attach a resume by default");
+    }
+    if (btn.dataset.act === "rename") {
+      const label = prompt("Name this resume", resume.label);
+      if (!label || label.trim() === resume.label) return;
+      const updated = await api(`/api/resumes/${id}`, { method: "PUT", body: { label } });
+      resumes = resumes.map((r) => (r.id === id ? updated : r));
+      renderResumes();
+    }
+    if (btn.dataset.act === "delete") {
+      if (!confirm(`Delete "${resume.label}"? Drafts using it will be set to no resume.`)) return;
+      await api(`/api/resumes/${id}`, { method: "DELETE" });
+      resumes = resumes.filter((r) => r.id !== id);
+      if (settings.defaultResumeId === id) settings.defaultResumeId = null;
+      renderResumes();
+    }
+  } catch (err) {
+    showError($("#resume-error"), err.message);
+  }
 });
+
+const fileDrop = $(".file-drop");
+const fileInput = $("#resume-form input[type=file]");
+const fileText = $(".file-drop-text");
+const fileTextDefault = fileText.innerHTML;
+fileInput.addEventListener("change", () => {
+  const file = fileInput.files[0];
+  fileDrop.classList.toggle("chosen", Boolean(file));
+  if (file) fileText.textContent = `${file.name} · ${formatSize(file.size)}`;
+  else fileText.innerHTML = fileTextDefault;
+});
+["dragenter", "dragover"].forEach((t) => fileDrop.addEventListener(t, () => fileDrop.classList.add("drag")));
+["dragleave", "drop"].forEach((t) => fileDrop.addEventListener(t, () => fileDrop.classList.remove("drag")));
+
+$("#resume-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const f = e.target;
+  const file = fileInput.files[0];
+  showError($("#resume-error"));
+  if (!file) return showError($("#resume-error"), "Choose a file to upload.");
+  if (file.size > 4 * 1024 * 1024) return showError($("#resume-error"), "Resumes must be 4 MB or smaller.");
+  const btn = $("#resume-upload-btn");
+  btn.disabled = true;
+  btn.textContent = "Uploading…";
+  try {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("label", f.label.value);
+    const created = await api("/api/resumes", { method: "POST", body: form });
+    resumes.push(created);
+    if (resumes.length === 1) settings.defaultResumeId = created.id;
+    f.reset();
+    fileInput.dispatchEvent(new Event("change"));
+    renderResumes();
+    toast(`Uploaded "${created.label}"`);
+  } catch (err) {
+    showError($("#resume-error"), err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Upload resume";
+  }
+});
+
+function fillResumeSelect(node, selectedId) {
+  const select = $(".resume-select", node);
+  const selected = String(selectedId ?? "");
+  select.innerHTML =
+    `<option value="">No resume</option>` +
+    resumes.map((r) => `<option value="${r.id}">📎 ${escapeHtml(r.label)} (${escapeHtml(r.filename)})</option>`).join("");
+  select.value = resumes.some((r) => String(r.id) === selected) ? selected : "";
+  if (!resumes.length) select.innerHTML = `<option value="">No resume — upload one in Settings</option>`;
+  $(".attach-line", node).classList.toggle("has-resume", Boolean(select.value));
+}
 
 /* ---------- Drafts ---------- */
 const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -131,6 +262,7 @@ function renderDraft(contact, index) {
   note.textContent = contact.emailPattern ? `Predicted email · pattern ${contact.emailPattern}` : "";
   note.hidden = !contact.emailPattern;
   $(".subject", node).value = contact.subject || "";
+  fillResumeSelect(node, contact.resumeId);
   $(".body", node).value = contact.body || "";
   if (contact.linkedinUrl) {
     const a = $(".linkedin", node);
@@ -147,9 +279,19 @@ function renderDraft(contact, index) {
   const save = () =>
     api(`/api/outreach/${contact.id}`, {
       method: "PUT",
-      body: { email: $(".to-email", node).value, subject: $(".subject", node).value, body: $(".body", node).value },
+      body: {
+        email: $(".to-email", node).value,
+        subject: $(".subject", node).value,
+        body: $(".body", node).value,
+        resumeId: $(".resume-select", node).value ? Number($(".resume-select", node).value) : null,
+      },
     });
-  node.addEventListener("input", () => {
+  $(".resume-select", node).addEventListener("change", () => {
+    $(".attach-line", node).classList.toggle("has-resume", Boolean($(".resume-select", node).value));
+    save().catch((e) => showError(err, e.message));
+  });
+  node.addEventListener("input", (e) => {
+    if (e.target.classList.contains("resume-select")) return;
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => save().catch((e) => showError(err, e.message)), 600);
   });
@@ -179,7 +321,10 @@ function renderDraft(contact, index) {
 
   $(".send", node).addEventListener("click", async () => {
     const to = $(".to-email", node).value.trim();
-    if (!confirm(`Send this email to ${contact.name} <${to}>?`)) return;
+    const select = $(".resume-select", node);
+    const attached = select.value ? resumes.find((r) => String(r.id) === select.value) : null;
+    const attachNote = attached ? `\n\nAttaching: ${attached.filename}` : "\n\nNo resume attached.";
+    if (!confirm(`Send this email to ${contact.name} <${to}>?${attachNote}`)) return;
     clearTimeout(saveTimer);
     setBusy(true);
     showError(err);
@@ -190,7 +335,7 @@ function renderDraft(contact, index) {
       if (result.sheetError) {
         showError(err, `Sent, but couldn't log to Google Sheets: ${result.sheetError}`);
       } else {
-        toast(`Sent to ${contact.name} and logged to your sheet`);
+        toast(`Sent to ${contact.name}${attached ? ` with ${attached.label}` : ""} and logged to your sheet`);
       }
       refreshSettingsQuietly();
       loadLog();
@@ -264,7 +409,7 @@ async function loadLog() {
     const rows = await api("/api/outreach");
     const body = $("#log-body");
     if (!rows.length) {
-      body.innerHTML = `<tr><td colspan="7" class="muted">Nothing yet. Sent emails show up here and in your Google Sheet.</td></tr>`;
+      body.innerHTML = `<tr><td colspan="8" class="muted">Nothing yet. Sent emails show up here and in your Google Sheet.</td></tr>`;
       return;
     }
     body.innerHTML = rows
@@ -276,6 +421,7 @@ async function loadLog() {
           <td>${escapeHtml(r.company)}</td>
           <td class="mono">${escapeHtml(r.email)}</td>
           <td>${escapeHtml(r.role)}</td>
+          <td class="mono">${r.attachedResume ? `📎 ${escapeHtml(r.attachedResume)}` : `<span class="muted">—</span>`}</td>
           <td><span class="tag ${escapeHtml(r.status)}" title="${escapeHtml(r.error)}">${escapeHtml(r.status)}</span></td>
         </tr>`,
       )
@@ -326,25 +472,26 @@ async function refreshSettingsQuietly() {
 
 /* ---------- Boot ---------- */
 async function boot() {
-  const me = await api("/api/auth/me").catch(() => ({ authed: false, configured: false }));
-  if (!me.authed) {
-    return showLogin(me.configured ? "" : "Set an APP_PASSWORD environment variable on this site to enable sign-in.");
-  }
+  const params = new URLSearchParams(location.search);
+  const status = params.get("google");
+  const message = params.get("message");
+  if (params.has("google")) history.replaceState(null, "", "/");
+
+  const me = await api("/api/auth/me").catch(() => ({ authed: false }));
+  if (!me.authed) return showLogin(status === "error" ? message || "Sign-in failed." : "");
+
   $("#login").hidden = true;
   $("#app").hidden = false;
-  settings = await api("/api/settings");
+  [settings, resumes] = await Promise.all([api("/api/settings"), api("/api/resumes").catch(() => [])]);
   renderSettings();
+  renderResumes();
   loadLog();
   loadPatterns();
 
-  const params = new URLSearchParams(location.search);
-  if (params.get("google") === "connected") toast("Google account connected");
-  if (params.get("google") === "error") {
-    openSettings();
-    toast(`Google connection failed: ${params.get("message") || "unknown error"}`);
-  }
-  if (params.has("google")) history.replaceState(null, "", "/");
-  if (!settings.googleConnected && !params.has("google")) openSettings();
+  if (status === "connected") toast(`Signed in as ${settings.email}`);
+  if (status === "error") toast(`Google sign-in failed: ${message || "unknown error"}`);
+  // First visit: help the user set up their profile, template, and resume.
+  if (!settings.senderBackground && !settings.emailTemplate && !resumes.length) openSettings();
 }
 
 boot();

@@ -1,22 +1,22 @@
 import type { Config, Context } from "@netlify/functions";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { outreach, searches } from "../../db/schema.js";
-import { jsonError, requireAuth } from "../../lib/auth.js";
+import { jsonError, requireUser } from "../../lib/auth.js";
 
 function cleanDomain(input: string) {
   return input.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0];
 }
 
 export default async (req: Request, context: Context) => {
-  const denied = requireAuth(context);
-  if (denied) return denied;
+  const user = await requireUser(context);
+  if (user instanceof Response) return user;
 
   try {
     // Poll a running search.
     if (req.method === "GET" && context.params.id) {
       const id = Number(context.params.id);
-      const [search] = Number.isNaN(id) ? [] : await db.select().from(searches).where(eq(searches.id, id));
+      const [search] = Number.isNaN(id) ? [] : await db.select().from(searches).where(and(eq(searches.id, id), eq(searches.userId, user.id)));
       if (!search) return Response.json({ error: "Not found" }, { status: 404 });
       const contacts = search.status === "done" ? await db.select().from(outreach).where(eq(outreach.searchId, id)) : [];
       return Response.json({ search, contacts });
@@ -33,7 +33,7 @@ export default async (req: Request, context: Context) => {
     // Web research takes a minute or two, so it runs in a background function and the page polls.
     const [search] = await db
       .insert(searches)
-      .values({ role, company, companyDomain: domain, status: "pending", progress: "Starting…" })
+      .values({ userId: user.id, role, company, companyDomain: domain, status: "pending", progress: "Starting…" })
       .returning();
 
     const res = await fetch(new URL("/.netlify/functions/search-worker", req.url), {
