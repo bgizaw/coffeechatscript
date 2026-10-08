@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp, integer, jsonb, index } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, integer, jsonb, index, real, uniqueIndex } from "drizzle-orm/pg-core";
 
 // One row per Google account that has signed in. Holds the profile, template, and Google tokens.
 export const users = pgTable("users", {
@@ -106,18 +106,46 @@ export const outreach = pgTable("outreach", {
   gmailMessageId: text("gmail_message_id"),
   sheetLogged: integer("sheet_logged").notNull().default(0),
   sentAt: timestamp("sent_at"),
+  // What happened after sending: bounced | replied (null = nothing reported yet). Feeds the email pattern confidence.
+  outcome: text(),
+  outcomeAt: timestamp("outcome_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// One row per company email domain: the address format we learned from public examples.
+// One row per company email domain: the address formats learned from the evidence below (a cache rebuilt on each change).
 export const emailPatterns = pgTable("email_patterns", {
   domain: text().primaryKey(),
   company: text(),
-  // e.g. "first.last" — null when no usable public examples were found.
+  // Best-supported format, e.g. "first.last" — null when no example matched a known format.
   pattern: text(),
-  // Number of found examples that match the pattern.
+  // Number of independent examples (distinct people) behind `pattern`.
   matches: integer().notNull().default(0),
-  // [{ email, name, sourceUrl }]
+  // 0–1 confidence in `pattern`, from public votes plus reply/bounce feedback.
+  confidence: real().notNull().default(0),
+  // Every format with support, best first: [{ pattern, votes, examples, sources, replies, bounces, confidence, trusted }].
+  // More than one can coexist (acquisitions, legacy formats).
+  patterns: jsonb().notNull().default([]),
+  // Public examples for display: [{ email, name, sourceUrl, sources, formats }]
   examples: jsonb().notNull().default([]),
+  // When public sources were last mined (null = mine again on the next search).
   checkedAt: timestamp("checked_at").defaultNow(),
 });
+
+// Every real address seen for a domain, and where. Formats are worked out from these at tally time,
+// so better name matching applies to old evidence too. Replies and bounces from sent emails are evidence as well.
+export const emailEvidence = pgTable(
+  "email_evidence",
+  {
+    id: serial().primaryKey(),
+    domain: text().notNull(),
+    email: text().notNull(),
+    name: text().notNull().default(""),
+    // github | npm | pypi | crates | wayback | commoncrawl | sec | academic | press | web | reply | bounce
+    source: text().notNull(),
+    sourceUrl: text("source_url"),
+    // Set for reply/bounce evidence so it can be undone.
+    outreachId: integer("outreach_id").references(() => outreach.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (t) => [uniqueIndex("email_evidence_domain_email_source_idx").on(t.domain, t.email, t.source)],
+);
