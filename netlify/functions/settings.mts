@@ -1,5 +1,6 @@
 import type { Config, Context } from "@netlify/functions";
 import { jsonError, requireUser } from "../../lib/auth.js";
+import { DEFAULT_PRIORITIES } from "../../lib/priorities.js";
 import { getResume } from "../../lib/resumes.js";
 import { publicSettings, updateUser } from "../../lib/settings.js";
 
@@ -26,6 +27,11 @@ export default async (req: Request, context: Context) => {
       if (typeof body.senderName === "string") values.senderName = body.senderName.trim();
       if (typeof body.senderBackground === "string") values.senderBackground = body.senderBackground;
       if (typeof body.emailTemplate === "string") values.emailTemplate = body.emailTemplate;
+      if (typeof body.contactPriorities === "string") {
+        // Saving the default unchanged (or clearing it) keeps following the default.
+        const text = body.contactPriorities.trim();
+        values.contactPriorities = text === DEFAULT_PRIORITIES ? "" : text;
+      }
       if ("spreadsheetId" in body) values.spreadsheetId = parseSpreadsheetId(body.spreadsheetId);
       if ("defaultResumeId" in body) {
         const id = body.defaultResumeId ? Number(body.defaultResumeId) : null;

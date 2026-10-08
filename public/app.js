@@ -67,6 +67,7 @@ function renderSettings() {
   f.senderName.value = settings.senderName || "";
   f.senderBackground.value = settings.senderBackground || "";
   f.emailTemplate.value = settings.emailTemplate || "";
+  f.contactPriorities.value = settings.contactPriorities || "";
   f.spreadsheetId.value = settings.spreadsheetId || "";
 
   const connected = settings.googleConnected;
@@ -114,6 +115,7 @@ $("#settings-form").addEventListener("submit", async (e) => {
         senderName: f.senderName.value,
         senderBackground: f.senderBackground.value,
         emailTemplate: f.emailTemplate.value,
+        contactPriorities: f.contactPriorities.value,
         spreadsheetId: f.spreadsheetId.value,
       },
     });
