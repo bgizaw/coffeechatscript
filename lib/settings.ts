@@ -2,6 +2,7 @@ import { count, eq, isNull } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { searches, settings, users } from "../db/schema.js";
 import type { User } from "./auth.js";
+import { priorityList } from "./priorities.js";
 
 export async function updateUser(userId: number, values: Partial<typeof users.$inferInsert>) {
   const [row] = await db
@@ -21,6 +22,7 @@ export function publicSettings(u: User) {
     senderName: u.senderName,
     senderBackground: u.senderBackground,
     emailTemplate: u.emailTemplate,
+    contactPriorities: priorityList(u.contactPriorities),
     spreadsheetId: u.spreadsheetId,
     defaultResumeId: u.defaultResumeId,
     googleEmail: u.email,

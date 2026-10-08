@@ -10,6 +10,8 @@ export const users = pgTable("users", {
   senderName: text("sender_name").notNull().default(""),
   senderBackground: text("sender_background").notNull().default(""),
   emailTemplate: text("email_template").notNull().default(""),
+  // Tiered list of what makes someone a good contact. Empty = use DEFAULT_PRIORITIES.
+  contactPriorities: text("contact_priorities").notNull().default(""),
   spreadsheetId: text("spreadsheet_id"),
   // Resume pre-selected on new drafts (null = no attachment by default).
   defaultResumeId: integer("default_resume_id"),

@@ -6,6 +6,10 @@ Enter the role you applied for and the company. The app searches the web for the
 
 Anyone signs in with their Google account. That one sign-in also grants permission to send from their Gmail and to log sends to a Google Sheet, so each person sends from their own address. Each account's profile, background, email template, resumes, drafts, history, and log sheet are saved to that account. Learned company email patterns are shared across accounts. Accounts can be deleted from Settings, which removes all of their data and revokes Google access.
 
+## Contact priorities
+
+The 2 contacts are chosen using a tiered priority list under **Settings → Who to contact first**. Tier 1 is shared affiliation (Pomona and the Claremont Colleges, MLT, Thrive Scholars, OBSA and other affinity networks). Tier 2 is a similar path (same major, recent grads, CS↔fashion moves, Houston/Texas roots). Tier 3 is role relevance (hiring manager, peers, recruiters, new hires, active posters). Tier 4 is signals that someone will reply (mentoring, talks, small teams, shared interests). There is also a list of people to penalize or skip, such as VPs and above at large companies, empty profiles, and company-wide aliases. Web searches look for people matching the Tier 1 and Tier 2 markers at the company, and candidates are ranked by the highest tier they match. At most one of the two picks is the hiring manager. Each draft shows the tier and markers that got the person picked. Edit the list to fit your own background, or clear it to restore the default.
+
 ## Resumes
 
 Upload resumes (PDF, DOC, or DOCX, up to 4 MB each, 10 per account) under **Settings → Resumes**. Star one to pre-select it on new drafts. On each draft, the **Attach** menu picks which resume to send, or none. The file is attached to the Gmail message, and the outreach log and Google Sheet record which one was sent.

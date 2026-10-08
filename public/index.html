@@ -166,6 +166,13 @@
         <p class="hint">Placeholders like <code>{{first_name}}</code>, <code>{{role}}</code>, <code>{{company}}</code>, <code>{{my_name}}</code> are understood but optional.</p>
       </fieldset>
       <fieldset>
+        <legend>Who to contact first</legend>
+        <label class="field"><span>Priority tiers used to pick your 2 contacts <small>(Tier 1 is most important)</small></span>
+          <textarea name="contactPriorities" rows="12"></textarea>
+        </label>
+        <p class="hint">Each search looks for people matching these markers and ranks them by tier. At most one of the two picks is the hiring manager. Clear the box to restore the default list.</p>
+      </fieldset>
+      <fieldset>
         <legend>Google Sheet</legend>
         <label class="field"><span>Existing sheet URL or ID <small>(leave blank to auto-create)</small></span>
           <input name="spreadsheetId" placeholder="https://docs.google.com/spreadsheets/d/..." />

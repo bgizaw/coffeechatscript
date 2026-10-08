@@ -65,16 +65,53 @@ Use short, common LinkedIn-style titles. Format: {"hiringTitles": [...], "peerTi
   );
 }
 
-export function rankCandidates(role: string, company: string, candidates: { id: string; title: string | null; group: string }[]) {
-  return askJson<{ ranked: { id: string; reason: string }[] }>(
-    "You help job seekers pick who to reach out to about a job opening.",
-    `I'm applying for "${role}" at ${company}. Rank the best people to email, most valuable first.
-Strongly prefer the likely hiring manager (the person this role would report to), then a recruiter focused on this kind of role, then someone with direct experience in this exact role. Avoid C-suite at large companies and unrelated departments.
-Return up to 6 people as {"ranked":[{"id":"...","reason":"one short sentence on why they're a good contact"}]}.
+export type RankedContact = {
+  id: string;
+  tier: number;
+  // hiring_manager = the person the role would report to or the team lead; only one of these is picked.
+  kind: "hiring_manager" | "recruiter" | "peer" | "other";
+  markers: string[];
+  reason: string;
+};
+
+export function rankCandidates(
+  role: string,
+  company: string,
+  candidates: { id: string; title: string | null; group: string; headline: string | null; signals: string[] }[],
+  opts: { priorities: string; background: string; emailVerified: boolean },
+) {
+  return askJson<{ ranked: RankedContact[] }>(
+    "You help job seekers pick who to reach out to about a job opening, favoring people most likely to reply.",
+    `I'm applying for "${role}" at ${company}. Rank the best people to email, best first, using my tiered priority list below. Tier 1 markers matter most, then Tier 2, then Tier 3, then Tier 4.
+
+Priority list:
+"""
+${opts.priorities}
+"""
+
+About me:
+"""
+${opts.background || "(not provided)"}
+"""
+
+How to rank:
+- A person's "tier" is the highest (lowest-numbered) tier with a marker they actually match, based only on their title, headline, and signals below. Never assume a marker that isn't shown. Use 5 if none match.
+- Sort by tier first. Within a tier, prefer people who match more markers and more tiers (e.g. a Tier 1 alum who is also a peer in the role beats a Tier 1 alum in an unrelated department).
+- Apply every "penalize or skip" rule: push executives (VP and above) at large companies, people with thin or empty profiles, and generic/team contacts to the bottom or leave them out.${opts.emailVerified ? "" : "\n- Note: this company's email format couldn't be verified from public examples, so prefer people whose profile gives other strong reasons they'll reply."}
+- "kind": "hiring_manager" for the likely hiring manager or team lead for this exact role, "recruiter" for recruiters/talent partners, "peer" for people in or one to three levels above this role, otherwise "other".
+- "markers": the specific priority markers they match, short (e.g. "Pomona alum", "MLT Fellow", "Recent grad", "Peer in role", "Houston roots").
+- "reason": one short sentence on why they're a good contact, leading with their strongest marker.
+
+Return up to 6 people as {"ranked":[{"id":"...","tier":1,"kind":"peer","markers":["..."],"reason":"..."}]}.
 
 Candidates:
-${candidates.map((c) => `- id=${c.id} | title=${c.title ?? "unknown"} | found_as=${c.group}`).join("\n")}`,
-    1200,
+${candidates
+  .map(
+    (c) =>
+      `- id=${c.id} | title=${c.title ?? "unknown"} | found_as=${c.group} | headline=${c.headline ?? "n/a"} | signals=${c.signals.length ? c.signals.join("; ") : "none"}`,
+  )
+  .join("\n")}`,
+    2000,
   );
 }
 

@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "contact_priorities" text DEFAULT '' NOT NULL;
