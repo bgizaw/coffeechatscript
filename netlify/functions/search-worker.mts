@@ -4,7 +4,7 @@ import { db } from "../../db/index.js";
 import { outreach, searches } from "../../db/schema.js";
 import { currentUser } from "../../lib/auth.js";
 import { findCompanyDomain, findPeople } from "../../lib/discovery.js";
-import { DEFAULT_PATTERN, describePattern, getEmailPattern, predictEmail } from "../../lib/emailPattern.js";
+import { DEFAULT_PATTERN, describePattern, getEmailPattern, patternsOf, predictEmail, type PatternStat } from "../../lib/emailPattern.js";
 import { rankCandidates, suggestTitles, type RankedContact } from "../../lib/ai.js";
 import { priorityList } from "../../lib/priorities.js";
 
@@ -13,6 +13,22 @@ const CONTACTS_WANTED = 2;
 const MAX_HIRING_MANAGERS = 1;
 // Team inboxes and company-wide aliases aren't people to coffee-chat with.
 const ALIAS_NAME = /\b(team|careers|jobs|recruiting|talent|hr|info|support|hello|contact)\b/i;
+
+/** How the address was predicted and how much to trust it, shown on the draft. */
+function patternNote(format: string, domain: string, patterns: PatternStat[]) {
+  const used = patterns.find((p) => p.pattern === format);
+  const shown = describePattern(format, domain);
+  if (!used) return `${shown} — unverified guess, no public examples found`;
+  const pct = `${Math.round(used.confidence * 100)}% confidence`;
+  const examples = `${used.examples} example${used.examples === 1 ? "" : "s"}${used.sources.length ? ` from ${used.sources.join(", ")}` : ""}`;
+  const feedback = [used.replies && `${used.replies} repl${used.replies === 1 ? "y" : "ies"}`, used.bounces && `${used.bounces} bounce${used.bounces === 1 ? "" : "s"}`]
+    .filter(Boolean)
+    .join(", ");
+  const trust = used.trusted ? "" : " · needs a 2nd independent example to trust";
+  const others = patterns.filter((p) => p.pattern !== format && p.examples >= 2).slice(0, 2);
+  const also = others.length ? ` · also used here: ${others.map((p) => `${describePattern(p.pattern, domain)} (${p.examples})`).join(", ")}` : "";
+  return `${shown} — ${pct} · ${examples}${feedback ? ` · ${feedback}` : ""}${trust}${also}`;
+}
 
 /** Finds people for a search, predicts their emails from the company's pattern, and saves them as drafts. */
 export default async (req: Request, context: Context) => {
@@ -60,7 +76,7 @@ export default async (req: Request, context: Context) => {
 
     // 3. Let AI rank them against the priority tiers and keep the best ones.
     await progress("Ranking contacts by your priority tiers…");
-    const { ranked } = await rankCandidates(role, resolved.name, pool, { ...prefs, emailVerified: Boolean(pattern.pattern) });
+    const { ranked } = await rankCandidates(role, resolved.name, pool, { ...prefs, emailVerified: Boolean(patternsOf(pattern)[0]?.trusted) });
     const byId = new Map(pool.map((c) => [c.id, c]));
     const tierOf = (r: RankedContact) => (Number.isInteger(r.tier) && r.tier >= 1 ? Math.min(r.tier, 5) : 5);
     const ordered: RankedContact[] = [
@@ -71,32 +87,36 @@ export default async (req: Request, context: Context) => {
         .map((c): RankedContact => ({ id: c.id, tier: 5, kind: "other", markers: [], reason: `Found as ${c.group}` })),
     ];
 
-    // 4. Predict each email from the learned pattern (or the most common format if none was found).
-    const format = pattern.pattern ?? DEFAULT_PATTERN;
+    // 4. Predict each email from the best learned pattern that fits the name (or the most common format if none was found).
+    const known = patternsOf(pattern);
+    const formats = [...known.map((p) => p.pattern), DEFAULT_PATTERN];
+    const predict = (name: string) => {
+      for (const format of formats) {
+        const email = predictEmail(name, resolved.domain, format);
+        if (email) return { email, format };
+      }
+      return { email: null, format: DEFAULT_PATTERN };
+    };
     const sentEmails = new Set(sentRows.map((r) => r.email?.toLowerCase()));
     const seenIds = new Set<string>();
     let hiringManagers = 0;
     const picked = ordered
       .filter((r) => !seenIds.has(r.id) && seenIds.add(r.id))
-      .map((r) => ({ ...r, person: byId.get(r.id)!, email: predictEmail(byId.get(r.id)!.name, resolved.domain, format) }))
+      .map((r) => ({ ...r, person: byId.get(r.id)!, ...predict(byId.get(r.id)!.name) }))
       .filter((r) => r.email && !sentEmails.has(r.email))
       .filter((r) => r.kind !== "hiring_manager" || ++hiringManagers <= MAX_HIRING_MANAGERS)
       .slice(0, CONTACTS_WANTED);
     if (!picked.length) return fail("Found people but couldn't predict any email addresses.");
 
-    const note = pattern.pattern
-      ? `${describePattern(format, resolved.domain)} — matches ${pattern.matches} public example${pattern.matches === 1 ? "" : "s"}`
-      : `${describePattern(format, resolved.domain)} — unverified guess, no public examples found`;
-
     // 5. Save the contacts as drafts (emails are written in a separate step).
     await db.insert(outreach).values(
-      picked.map(({ reason, person, email, tier, markers }) => ({
+      picked.map(({ reason, person, email, format, tier, markers }) => ({
         searchId: search.id,
         name: person.name,
         title: person.title,
         company: resolved.name,
         email,
-        emailPattern: note,
+        emailPattern: patternNote(format, resolved.domain, known),
         linkedinUrl: person.linkedinUrl,
         reason: `${tier <= 4 ? `Tier ${tier}` : "No priority match"}${markers?.length ? ` · ${markers.join(", ")}` : ""} — ${reason}`,
         resumeId: user.defaultResumeId,

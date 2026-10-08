@@ -8,7 +8,7 @@ function parseJson<T>(text: string): T {
   return JSON.parse(match[0]) as T;
 }
 
-async function askJson<T>(system: string, prompt: string, maxTokens = 1500): Promise<T> {
+export async function askJson<T>(system: string, prompt: string, maxTokens = 1500): Promise<T> {
   const anthropic = new Anthropic();
   const msg = await anthropic.messages.create({
     model: MODEL,
