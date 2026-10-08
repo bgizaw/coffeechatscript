@@ -14,17 +14,17 @@
 
   <!-- Sign-in -->
   <main id="login" class="login" hidden>
-    <form id="login-form" class="login-card">
+    <div class="login-card">
       <p class="eyebrow">AutoCoffeeChat</p>
-      <h1>Your outreach desk is locked.</h1>
-      <label class="field">
-        <span>Password</span>
-        <input type="password" name="password" autocomplete="current-password" required />
-      </label>
+      <h1>Reach the people behind the job post.</h1>
+      <p class="login-copy">Find the hiring manager, predict their email, and send a personalized note with your resume attached — straight from your own Gmail.</p>
+      <a class="btn btn-ink btn-google" href="/api/auth/google/start">
+        <svg viewBox="0 0 48 48" width="18" height="18" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.2-.1-2.3-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.2-.1-2.3-.4-3.5z"/></svg>
+        Sign in with Google
+      </a>
       <p class="error" id="login-error" hidden></p>
-      <button class="btn btn-ink" type="submit">Unlock</button>
-      <p class="hint" id="login-hint"></p>
-    </form>
+      <p class="hint">Google will ask permission to send email as you and to create a spreadsheet that logs what you send. Nothing is ever sent until you press Send.</p>
+    </div>
   </main>
 
   <!-- App -->
@@ -32,10 +32,10 @@
     <header class="topbar">
       <a class="brand" href="/"><span class="stamp">AC</span> AutoCoffeeChat</a>
       <nav class="top-actions">
-        <span class="status-pill" id="google-pill">Google not connected</span>
+        <span class="status-pill" id="google-pill"></span>
         <a class="link" id="sheet-link" href="#" target="_blank" rel="noopener" hidden>Open log sheet</a>
         <button class="btn btn-ghost" id="open-settings" type="button">Settings</button>
-        <button class="btn btn-ghost" id="logout" type="button">Lock</button>
+        <button class="btn btn-ghost" id="logout" type="button">Sign out</button>
       </nav>
     </header>
 
@@ -87,9 +87,9 @@
       <div class="table-wrap">
         <table>
           <thead>
-            <tr><th>Sent</th><th>Name</th><th>Their role</th><th>Company</th><th>Email</th><th>For role</th><th>Status</th></tr>
+            <tr><th>Sent</th><th>Name</th><th>Their role</th><th>Company</th><th>Email</th><th>For role</th><th>Resume</th><th>Status</th></tr>
           </thead>
-          <tbody id="log-body"><tr><td colspan="7" class="muted">Nothing yet.</td></tr></tbody>
+          <tbody id="log-body"><tr><td colspan="8" class="muted">Nothing yet.</td></tr></tbody>
         </table>
       </div>
     </section>
@@ -118,16 +118,39 @@
       <h2>Settings</h2>
       <button class="btn btn-ghost" id="close-settings" type="button">Close</button>
     </div>
-    <form id="settings-form" class="settings-form">
+    <div class="settings-form">
       <fieldset>
-        <legend>Google account</legend>
-        <p class="muted" id="google-status">Not connected.</p>
-        <div class="row">
-          <a class="btn btn-ink" id="google-connect" href="/api/auth/google/start">Connect Gmail &amp; Sheets</a>
-          <button class="btn btn-ghost" id="google-disconnect" type="button" hidden>Disconnect</button>
+        <legend>Account</legend>
+        <div class="account">
+          <img class="avatar" id="account-avatar" alt="" referrerpolicy="no-referrer" hidden />
+          <div>
+            <p class="account-name" id="account-name"></p>
+            <p class="muted mono-sm" id="account-email"></p>
+          </div>
         </div>
-        <p class="hint">Emails are sent from this Gmail address. A log spreadsheet is created automatically on your first send.</p>
+        <p class="error" id="google-warning" hidden>Google access has expired, so emails can't be sent. Sign in again to reconnect.</p>
+        <div class="row">
+          <a class="btn btn-ghost" id="switch-account" href="/api/auth/google/start">Use a different Google account</a>
+          <button class="btn btn-ghost" id="logout-2" type="button">Sign out</button>
+        </div>
+        <p class="hint">Emails are sent from this Gmail address. Your profile, template, resumes, and history are saved to this account. A log spreadsheet is created automatically on your first send.</p>
       </fieldset>
+      <fieldset>
+        <legend>Resumes</legend>
+        <ul class="resume-list" id="resume-list"></ul>
+        <form id="resume-form" class="resume-upload">
+          <label class="field"><span>Name <small>(optional, e.g. "Design resume")</small></span><input name="label" maxlength="80" placeholder="Product resume" /></label>
+          <label class="file-drop">
+            <input type="file" name="file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required />
+            <span class="file-drop-text">Choose a PDF or Word file <small>(max 4 MB)</small></span>
+          </label>
+          <p class="error" id="resume-error" hidden></p>
+          <button class="btn btn-ink" type="submit" id="resume-upload-btn">Upload resume</button>
+        </form>
+        <p class="hint">Pick which resume to attach (or none) on each draft before sending. The starred one is pre-selected on new drafts.</p>
+      </fieldset>
+    </div>
+    <form id="settings-form" class="settings-form">
       <fieldset>
         <legend>About you</legend>
         <label class="field"><span>Your name</span><input name="senderName" placeholder="Priya Raman" /></label>
@@ -151,6 +174,10 @@
       <p class="error" id="settings-error" hidden></p>
       <button class="btn btn-ink" type="submit">Save settings</button>
     </form>
+    <div class="danger-zone">
+      <button class="btn btn-ghost" id="delete-account" type="button">Delete my account</button>
+      <p class="hint">Permanently deletes your profile, resumes, drafts, and history from AutoCoffeeChat and revokes its Google access. Your Gmail and log spreadsheet are not touched.</p>
+    </div>
   </aside>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
@@ -168,6 +195,9 @@
       <label class="line"><span>To</span><input class="to-email" /></label>
       <p class="pattern-note"></p>
       <label class="line"><span>Subject</span><input class="subject" /></label>
+      <label class="line attach-line"><span>Attach</span>
+        <select class="resume-select"><option value="">No resume</option></select>
+      </label>
       <div class="body-wrap">
         <textarea class="body" rows="10"></textarea>
         <div class="skeleton" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>

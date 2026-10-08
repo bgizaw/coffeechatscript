@@ -2,12 +2,12 @@ import type { Config, Context } from "@netlify/functions";
 import { desc, eq } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { emailPatterns } from "../../db/schema.js";
-import { jsonError, requireAuth } from "../../lib/auth.js";
+import { jsonError, requireUser } from "../../lib/auth.js";
 import { describePattern } from "../../lib/emailPattern.js";
 
 export default async (req: Request, context: Context) => {
-  const denied = requireAuth(context);
-  if (denied) return denied;
+  const user = await requireUser(context);
+  if (user instanceof Response) return user;
 
   try {
     if (req.method === "GET") {

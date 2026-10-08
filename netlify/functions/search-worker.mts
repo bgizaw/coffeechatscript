@@ -2,7 +2,7 @@ import type { Config, Context } from "@netlify/functions";
 import { and, eq } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { outreach, searches } from "../../db/schema.js";
-import { requireAuth } from "../../lib/auth.js";
+import { currentUser } from "../../lib/auth.js";
 import { findCompanyDomain, findPeople } from "../../lib/discovery.js";
 import { DEFAULT_PATTERN, describePattern, getEmailPattern, predictEmail } from "../../lib/emailPattern.js";
 import { rankCandidates, suggestTitles } from "../../lib/ai.js";
@@ -11,9 +11,13 @@ const CONTACTS_WANTED = 2;
 
 /** Finds people for a search, predicts their emails from the company's pattern, and saves them as drafts. */
 export default async (req: Request, context: Context) => {
-  if (requireAuth(context)) return;
+  const user = await currentUser(context);
+  if (!user) return;
   const { searchId } = await req.json();
-  const [search] = await db.select().from(searches).where(eq(searches.id, Number(searchId)));
+  const [search] = await db
+    .select()
+    .from(searches)
+    .where(and(eq(searches.id, Number(searchId)), eq(searches.userId, user.id)));
   if (!search || search.status !== "pending") return;
 
   const progress = (text: string) => db.update(searches).set({ progress: text }).where(eq(searches.id, search.id));
@@ -38,11 +42,12 @@ export default async (req: Request, context: Context) => {
       getEmailPattern(resolved.name, resolved.domain),
     ]);
 
-    // Skip people we've already emailed at this company.
+    // Skip people this user has already emailed at this company.
     const sentRows = await db
       .select({ name: outreach.name, email: outreach.email })
       .from(outreach)
-      .where(and(eq(outreach.status, "sent"), eq(outreach.company, resolved.name)));
+      .innerJoin(searches, eq(outreach.searchId, searches.id))
+      .where(and(eq(searches.userId, user.id), eq(outreach.status, "sent"), eq(outreach.company, resolved.name)));
     const sentNames = new Set(sentRows.map((r) => r.name.toLowerCase()));
     const pool = people.filter((p) => !sentNames.has(p.name.toLowerCase()));
     if (!pool.length) return fail(`No people found at ${resolved.name} for this role. Try a broader role name.`);
@@ -80,6 +85,7 @@ export default async (req: Request, context: Context) => {
         emailPattern: note,
         linkedinUrl: person.linkedinUrl,
         reason,
+        resumeId: user.defaultResumeId,
         profile: { firstName: person.name.split(" ")[0], headline: person.headline, history: [] },
       })),
     );
